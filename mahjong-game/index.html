@@ -205,19 +205,21 @@
 
     .game-header {
       display: flex; align-items: center; gap: 10px;
-      padding: 10px 18px; flex-wrap: wrap;
+      padding: 12px 18px; flex-wrap: wrap;
       border-bottom: 1px solid rgba(255,255,255,0.07);
-      background: rgba(0,0,0,0.4);
-      backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(10px);
+      position: sticky; top: 0; z-index: 100;
     }
 
     .btn-back {
-      background: rgba(255,255,255,0.08); color: #fff;
-      border: none; padding: 5px 12px; border-radius: 100px;
-      cursor: pointer; font-size: 0.8rem; white-space: nowrap;
+      background: rgba(255,255,255,0.1); color: #fff;
+      border: none; padding: 9px 18px; border-radius: 100px;
+      cursor: pointer; font-size: 0.95rem; font-weight: 600;
+      white-space: nowrap; font-family: inherit;
       transition: background 0.15s;
     }
-    .btn-back:hover { background: rgba(255,255,255,0.18); }
+    .btn-back:hover { background: rgba(255,255,255,0.22); }
 
     .header-title {
       font-family: 'Playfair Display', serif;
@@ -226,17 +228,17 @@
     }
 
     .header-stats {
-      font-size: 0.8rem; opacity: 0.6;
+      font-size: 0.85rem; opacity: 0.7;
       display: flex; gap: 12px;
     }
     .header-stats b { color: #fff; }
 
-    .header-actions { margin-left: auto; display: flex; gap: 8px; }
+    .header-actions { margin-left: auto; display: flex; gap: 10px; }
 
     .btn-action {
-      border: none; padding: 5px 14px; border-radius: 100px;
-      cursor: pointer; font-size: 0.8rem;
-      font-family: inherit; font-weight: 600;
+      border: none; padding: 9px 20px; border-radius: 100px;
+      cursor: pointer; font-size: 0.95rem;
+      font-family: inherit; font-weight: 700;
       transition: filter 0.15s, transform 0.1s;
     }
     .btn-action:hover  { filter: brightness(1.2); transform: translateY(-1px); }
@@ -495,7 +497,7 @@
 <!-- ════════════════════════════════════ GAME -->
 <div id="game">
   <header class="game-header">
-    <button class="btn-back" id="btn-back">← Packs</button>
+    <button class="btn-back" id="btn-back">← Back to Menu</button>
     <span class="header-title" id="header-title"></span>
     <div class="header-stats">
       Pairs <b id="stat-pairs">—</b>
@@ -1115,9 +1117,30 @@ function openEditPanel() {
       const file=e.target.files[0]; if(!file) return;
       const reader=new FileReader();
       reader.onload=ev=>{
-        customImages[i]=ev.target.result;
-        img.src=ev.target.result;
-        saveCustomImages();
+        const origImg=new Image();
+        origImg.onload=()=>{
+          // Downscale to 180×240 (cover crop) to keep game performance snappy
+          const TW=180, TH=240;
+          const c=document.createElement('canvas');
+          c.width=TW; c.height=TH;
+          const ctx2=c.getContext('2d');
+          const srcRatio=origImg.width/origImg.height;
+          const dstRatio=TW/TH;
+          let sx,sy,sw,sh;
+          if(srcRatio>dstRatio){
+            sh=origImg.height; sw=sh*dstRatio;
+            sy=0; sx=(origImg.width-sw)/2;
+          } else {
+            sw=origImg.width; sh=sw/dstRatio;
+            sx=0; sy=(origImg.height-sh)/2;
+          }
+          ctx2.drawImage(origImg,sx,sy,sw,sh,0,0,TW,TH);
+          const dataUrl=c.toDataURL('image/jpeg',0.82);
+          customImages[i]=dataUrl;
+          img.src=dataUrl;
+          saveCustomImages();
+        };
+        origImg.src=ev.target.result;
       };
       reader.readAsDataURL(file);
     });
