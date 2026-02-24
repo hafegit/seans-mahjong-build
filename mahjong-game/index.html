@@ -773,6 +773,7 @@ function renderBoard() {
   const live = tiles.filter(t=>!t.removed);
   if (!live.length) return;
 
+  // Natural bounds at full tile size
   let minY=Infinity, maxX=0, maxY=-Infinity;
   for (const t of live) {
     const {x,y}=tilePos(t);
@@ -781,8 +782,21 @@ function renderBoard() {
     if (y+TILE_H>maxY) maxY=y+TILE_H;
   }
   const yOff = minY < 0 ? -minY : 0;
-  board.style.width  = maxX+'px';
-  board.style.height = (maxY+yOff)+'px';
+  const naturalW = maxX;
+  const naturalH = maxY + yOff;
+
+  // Scale to fit available space — never upscale
+  const wrap = document.getElementById('board-wrap');
+  const headerEl = document.querySelector('.game-header');
+  const headerH = headerEl ? headerEl.offsetHeight : 60;
+  const availW = (wrap.clientWidth  || window.innerWidth)  - 40;
+  const availH = (wrap.clientHeight || (window.innerHeight - headerH)) - 40;
+  const scale = (availW > 0 && availH > 0)
+    ? Math.min(1, availW / naturalW, availH / naturalH)
+    : 1;
+
+  board.style.width  = (naturalW * scale) + 'px';
+  board.style.height = (naturalH * scale) + 'px';
 
   const sorted = [...live].sort((a,b)=>
     a.layer!==b.layer ? a.layer-b.layer : (a.row+a.col)-(b.row+b.col));
@@ -792,11 +806,14 @@ function renderBoard() {
     const free=isFree(tile);
     const el=document.createElement('div');
     el.className='tile '+(free?'free':'blocked');
-    if (tile===selected)          el.classList.add('selected');
+    if (tile===selected)           el.classList.add('selected');
     if (hintIds.includes(tile.id)) el.classList.add('hint');
-    el.style.left  = x+'px';
-    el.style.top   = (y+yOff)+'px';
-    el.style.zIndex= tile.layer*1000+tile.row*10+tile.col;
+    el.style.left         = (x * scale) + 'px';
+    el.style.top          = ((y + yOff) * scale) + 'px';
+    el.style.width        = (TILE_W * scale) + 'px';
+    el.style.height       = (TILE_H * scale) + 'px';
+    el.style.borderRadius = Math.round(9 * scale) + 'px';
+    el.style.zIndex       = tile.layer*1000+tile.row*10+tile.col;
     el.style.backgroundImage = `url('${currentPack.images[tile.type]}')`;
     if (free) el.addEventListener('click',()=>handleClick(tile));
     tile.el=el;
@@ -1020,6 +1037,11 @@ function stopFireworks(){
 customImages = loadCustomImages() || generateDefaultCustomImages();
 buildHome();
 startFireworks();
+
+// Re-render board on resize (handles orientation change on mobile too)
+window.addEventListener('resize', () => {
+  if (currentPack && document.getElementById('game').classList.contains('show')) renderBoard();
+});
 </script>
 </body>
 </html>
