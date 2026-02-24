@@ -381,6 +381,83 @@
     #btn-close-edit  { background: var(--gold); color: #1a0e00; border: none; padding: 8px 24px; border-radius: 100px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
     #btn-reset-tiles:hover { background: rgba(255,255,255,0.14); }
     #btn-close-edit:hover  { background: var(--gold-lt); }
+
+    /* ══════════════════════════════════════════════════════ LEADERBOARD PANEL */
+    #lb-panel {
+      position: fixed; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.82);
+      z-index: 9100; backdrop-filter: blur(6px);
+      padding: 20px;
+    }
+    #lb-panel.show { display: flex; }
+
+    .lb-box {
+      background: #111;
+      border: 1px solid rgba(212,160,23,0.35);
+      border-radius: 20px; padding: 32px 36px;
+      max-width: 380px; width: 100%;
+      text-align: center;
+    }
+    .lb-heading {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem; color: var(--gold);
+      margin-bottom: 20px;
+    }
+    .lb-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.88rem; margin-bottom: 22px;
+    }
+    .lb-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .lb-table tbody tr:first-child td { border-top: 1px solid rgba(255,255,255,0.06); }
+
+    /* ══════════════════════════════════════════════════════ INITIALS MODAL */
+    #initials-modal {
+      position: fixed; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.82);
+      z-index: 9200; backdrop-filter: blur(6px);
+    }
+    #initials-modal.show { display: flex; }
+
+    #initials-input {
+      display: block; width: 120px; margin: 14px auto 0;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(212,160,23,0.4);
+      color: #fff; border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 1.6rem; text-align: center;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      font-family: 'Playfair Display', serif;
+      outline: none;
+    }
+    #initials-input:focus { border-color: var(--gold); }
+
+    .ov-btn-row {
+      display: flex; gap: 10px; justify-content: center;
+      margin-top: 14px; flex-wrap: wrap;
+    }
+    .ov-btn-ghost {
+      background: rgba(255,255,255,0.09); color: #fff;
+      border: none; padding: 10px 24px; border-radius: 100px;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      font-family: inherit;
+    }
+    .ov-btn-ghost:hover { background: rgba(255,255,255,0.16); }
+
+    /* Leaderboard button on pack cards */
+    .card-lb-btn {
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(0,0,0,0.55); color: rgba(255,255,255,0.75);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 4px 9px; border-radius: 100px;
+      font-size: 0.72rem; cursor: pointer;
+      transition: background 0.15s; z-index: 10;
+    }
+    .card-lb-btn:hover { background: rgba(255,255,255,0.15); }
   </style>
 </head>
 <body>
@@ -440,6 +517,32 @@
     <h2  class="ov-title"  id="ov-title"></h2>
     <p   class="ov-body"   id="ov-body"></p>
     <button class="ov-btn" id="ov-btn">Play Again</button>
+    <div id="ov-extras"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════ LEADERBOARD PANEL -->
+<div id="lb-panel">
+  <div class="lb-box">
+    <h2 class="lb-heading" id="lb-title">🏆 Leaderboard</h2>
+    <table class="lb-table"><tbody id="lb-body"></tbody></table>
+    <button class="ov-btn" onclick="document.getElementById('lb-panel').classList.remove('show')">Close</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════ INITIALS MODAL -->
+<div id="initials-modal">
+  <div class="ov-box">
+    <div class="ov-emoji">📝</div>
+    <h2 class="ov-title">Top 10!</h2>
+    <p class="ov-body">You made the leaderboard!<br>Enter up to 3 initials.</p>
+    <input id="initials-input" type="text" maxlength="3" placeholder="AAA"
+           autocomplete="off" spellcheck="false" inputmode="text">
+    <div class="ov-btn-row" style="margin-top:18px">
+      <button class="ov-btn-ghost"
+        onclick="document.getElementById('initials-modal').classList.remove('show');pendingScore=null">Skip</button>
+      <button class="ov-btn" onclick="submitInitials()">Submit ▶</button>
+    </div>
   </div>
 </div>
 
@@ -628,6 +731,72 @@ function saveBestTime(packId, secs) {
 let currentPack = null;
 let tiles = [], selected = null, hintIds = [], moveCount = 0;
 
+// ─── Leaderboard (localStorage) ───────────────────────────────────────────────
+const LB_MAX = 10;
+let pendingScore = null;
+
+function loadLeaderboard(packId) {
+  try { return JSON.parse(localStorage.getItem(`pmj-v2-lb-${packId}`)) || []; }
+  catch(_) { return []; }
+}
+
+function saveLeaderboard(packId, entries) {
+  try { localStorage.setItem(`pmj-v2-lb-${packId}`, JSON.stringify(entries)); } catch(_) {}
+}
+
+function addLeaderboardEntry(packId, initials, secs) {
+  const entries = loadLeaderboard(packId);
+  entries.push({ initials: initials.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3),
+                 time: secs, date: new Date().toISOString().slice(0,10) });
+  entries.sort((a,b) => a.time - b.time);
+  const trimmed = entries.slice(0, LB_MAX);
+  saveLeaderboard(packId, trimmed);
+  return trimmed;
+}
+
+function scoreQualifies(packId, secs) {
+  const entries = loadLeaderboard(packId);
+  return entries.length < LB_MAX || secs < entries[entries.length-1].time;
+}
+
+function showLeaderboardPanel(packId) {
+  const pack = PACKS.find(p => p.id === packId);
+  document.getElementById('lb-title').textContent = `🏆 ${pack ? pack.name : packId}`;
+  const entries = loadLeaderboard(packId);
+  const tbody = document.getElementById('lb-body');
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td style="opacity:0.4;padding:18px 0;text-align:center">No scores yet — be the first!</td></tr>';
+  } else {
+    const medals = ['🥇','🥈','🥉'];
+    tbody.innerHTML = entries.map((s,i) => `
+      <tr>
+        <td style="width:36px">${medals[i] || `<span style="opacity:0.45">${i+1}</span>`}</td>
+        <td><b>${s.initials}</b></td>
+        <td style="font-variant-numeric:tabular-nums">${fmtTime(s.time)}</td>
+        <td style="opacity:0.38;font-size:0.74rem;text-align:right">${s.date||''}</td>
+      </tr>`).join('');
+  }
+  document.getElementById('lb-panel').classList.add('show');
+}
+
+function submitInitials() {
+  const raw = document.getElementById('initials-input').value.trim();
+  const initials = raw.replace(/[^a-zA-Z]/g,'').toUpperCase().slice(0,3);
+  if (!initials || !pendingScore) return;
+  const { packId, secs } = pendingScore;
+  pendingScore = null;
+  document.getElementById('initials-modal').classList.remove('show');
+  addLeaderboardEntry(packId, initials, secs);
+  hideOverlay();
+  showLeaderboardPanel(packId);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('initials-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitInitials();
+  });
+});
+
 // ─── Home screen ──────────────────────────────────────────────────────────────
 function buildHome() {
   const row = document.getElementById('pack-row');
@@ -659,6 +828,13 @@ function buildHome() {
       <div class="card-meta">${pack.meta}${btStr}</div>
       <button class="card-btn">Play ▶</button>`;
     card.appendChild(info);
+
+    // Leaderboard button (top-left)
+    const lbBtn = document.createElement('button');
+    lbBtn.className = 'card-lb-btn';
+    lbBtn.textContent = '🏆 Scores';
+    lbBtn.addEventListener('click', e => { e.stopPropagation(); showLeaderboardPanel(pack.id); });
+    card.appendChild(lbBtn);
 
     // Edit button for custom pack
     if (pack.customizable) {
@@ -839,17 +1015,8 @@ function handleClick(tile) {
       const prev = getBestTime(currentPack.id);
       const isNewBest = prev === null || secs < prev;
       if (isNewBest) saveBestTime(currentPack.id, secs);
-      buildHome(); // refresh best-time badges on pack cards
-      if (isNewBest && prev !== null) {
-        showOverlay('🏆','New Best Time!',
-          `${fmtTime(secs)} — beat your previous best of ${fmtTime(prev)}! 恭喜！`);
-      } else if (isNewBest) {
-        showOverlay('🎆','You Win!',
-          `First clear in ${fmtTime(secs)} · ${moveCount} moves. 恭喜！`);
-      } else {
-        showOverlay('🎆','You Win!',
-          `${fmtTime(secs)} · Best: ${fmtTime(prev)} · ${moveCount} moves. 恭喜！`);
-      }
+      buildHome();
+      handleWin(currentPack.id, secs, isNewBest, prev);
     } else if (!hasValidMoves()) {
       stopTimer();
       showOverlay('😔','No Moves Left','No reachable pairs remain. Try again!');
@@ -877,7 +1044,47 @@ function showOverlay(emoji,title,body) {
   document.getElementById('ov-body').textContent=body;
   document.getElementById('overlay').classList.add('show');
 }
-function hideOverlay() { document.getElementById('overlay').classList.remove('show'); }
+function hideOverlay() {
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('ov-extras').innerHTML = '';
+}
+
+function handleWin(packId, secs, isNewBest, prev) {
+  if (isNewBest && prev !== null) {
+    showOverlay('🏆','New Best Time!',
+      `${fmtTime(secs)} — beat your previous best of ${fmtTime(prev)}! 恭喜！`);
+  } else if (isNewBest) {
+    showOverlay('🎆','You Win!',
+      `First clear in ${fmtTime(secs)} · ${moveCount} moves. 恭喜！`);
+  } else {
+    showOverlay('🎆','You Win!',
+      `${fmtTime(secs)} · Best: ${fmtTime(prev)} · ${moveCount} moves. 恭喜！`);
+  }
+
+  const extras = document.getElementById('ov-extras');
+  const row = document.createElement('div');
+  row.className = 'ov-btn-row';
+
+  if (scoreQualifies(packId, secs)) {
+    pendingScore = { packId, secs };
+    const sub = document.createElement('button');
+    sub.className = 'ov-btn';
+    sub.textContent = '📝 Submit Score';
+    sub.addEventListener('click', () => {
+      document.getElementById('initials-input').value = '';
+      document.getElementById('initials-modal').classList.add('show');
+      setTimeout(() => document.getElementById('initials-input').focus(), 50);
+    });
+    row.appendChild(sub);
+  }
+
+  const lbBtn = document.createElement('button');
+  lbBtn.className = 'ov-btn-ghost';
+  lbBtn.textContent = '🏆 Leaderboard';
+  lbBtn.addEventListener('click', () => { hideOverlay(); showLeaderboardPanel(packId); });
+  row.appendChild(lbBtn);
+  extras.appendChild(row);
+}
 
 // ─── Edit panel (custom pack) ─────────────────────────────────────────────────
 function openEditPanel() {
