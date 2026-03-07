@@ -1,6 +1,6 @@
 // Service Worker — Sean's AI New Year Mahjong
 // Bump CACHE_NAME whenever you deploy changes so users get fresh assets.
-const CACHE_NAME = 'pmj-pwa-v1';
+const CACHE_NAME = 'pmj-pwa-v2';
 
 const PRECACHE = [
   './',
