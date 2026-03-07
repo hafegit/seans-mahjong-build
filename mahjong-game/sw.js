@@ -1,6 +1,6 @@
 // Service Worker — Sean's AI New Year Mahjong
 // Bump CACHE_NAME whenever you deploy changes so users get fresh assets.
-const CACHE_NAME = 'pmj-pwa-v3';
+const CACHE_NAME = 'pmj-pwa-v4';
 
 const PRECACHE = [
   './',
@@ -35,12 +35,13 @@ const PRECACHE = [
   './images/latte/l14.jpg',
 ];
 
-// Pre-cache all game assets on install
+// Pre-cache all game assets on install, then wait for explicit activation
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE))
   );
-  self.skipWaiting();
+  // Do NOT skipWaiting here — the page will send SKIP_WAITING when the user
+  // consents to the update, ensuring cache is fully populated first.
 });
 
 // Remove old caches on activate

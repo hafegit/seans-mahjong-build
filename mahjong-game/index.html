@@ -467,6 +467,32 @@
       transition: background 0.15s; z-index: 10;
     }
     .card-lb-btn:hover { background: rgba(255,255,255,0.15); }
+
+    /* ══════════════════════════════════════════════════════ UPDATE BAR */
+    #update-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      text-align: center; padding: 10px 16px;
+      z-index: 500; pointer-events: none;
+    }
+    #btn-check-update {
+      background: none; border: none;
+      color: rgba(255,255,255,0.22);
+      font-size: 0.7rem; font-family: inherit;
+      cursor: pointer; pointer-events: all;
+      transition: color 0.2s;
+      padding: 4px 8px;
+    }
+    #btn-check-update:hover { color: rgba(255,255,255,0.55); }
+    #update-bar.update-ready #btn-check-update {
+      color: var(--gold);
+      font-weight: 600;
+      font-size: 0.78rem;
+      animation: pulse-gold 2s ease-in-out infinite;
+    }
+    @keyframes pulse-gold {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.6; }
+    }
   </style>
 </head>
 <body>
@@ -555,6 +581,11 @@
   </div>
 </div>
 
+<!-- ════════════════════════════════════ UPDATE BAR -->
+<div id="update-bar">
+  <button id="btn-check-update">↻ Check for updates</button>
+</div>
+
 <!-- ════════════════════════════════════ EDIT PANEL (Custom pack) -->
 <div id="edit-panel">
   <div class="edit-box">
@@ -580,12 +611,22 @@ const LAYOUT_18 = [ // 9 pairs – Pets
   [2,2,1],[4,2,1],
 ];
 
-const LAYOUT_28 = [ // 14 pairs – Latte (6-col wide, 4-row base)
+const LAYOUT_28 = [ // 14 pairs – Latte landscape (6-col × 4-row base)
   [0,0,0],[2,0,0],[4,0,0],[6,0,0],[8,0,0],[10,0,0],
   [0,2,0],[2,2,0],[4,2,0],[6,2,0],[8,2,0],[10,2,0],
   [0,4,0],[2,4,0],[4,4,0],[6,4,0],[8,4,0],[10,4,0],
   [0,6,0],[2,6,0],[4,6,0],[6,6,0],[8,6,0],[10,6,0],
   [4,2,1],[6,2,1],[4,4,1],[6,4,1],
+];
+
+const LAYOUT_28_P = [ // 14 pairs – Latte portrait (4-col × 6-row base)
+  [0,0,0],[2,0,0],[4,0,0],[6,0,0],
+  [0,2,0],[2,2,0],[4,2,0],[6,2,0],
+  [0,4,0],[2,4,0],[4,4,0],[6,4,0],
+  [0,6,0],[2,6,0],[4,6,0],[6,6,0],
+  [0,8,0],[2,8,0],[4,8,0],[6,8,0],
+  [0,10,0],[2,10,0],[4,10,0],[6,10,0],
+  [2,4,1],[4,4,1],[2,6,1],[4,6,1],
 ];
 
 const LAYOUT_20 = [ // 10 pairs – Custom
@@ -600,7 +641,12 @@ const LAYOUT_20 = [ // 10 pairs – Custom
 // Generates a random 46-tile layout (23 pairs) each game.
 // Randomly picks from 3 base shapes, then scatters upper-layer tiles.
 function makeMegaLayout() {
-  const shapes = [
+  const portrait = window.innerHeight > window.innerWidth;
+  // On portrait/mobile screens avoid the wide 8×5 shape
+  const shapes = portrait ? [
+    { cols: 5, rows: 8, upper: 6  },  // 40 + 6  = 46 – tall
+    { cols: 6, rows: 6, upper: 10 },  // 36 + 10 = 46 – squarish
+  ] : [
     { cols: 6, rows: 6, upper: 10 },  // 36 + 10 = 46 – squarish
     { cols: 5, rows: 8, upper: 6  },  // 40 + 6  = 46 – tall
     { cols: 8, rows: 5, upper: 6  },  // 40 + 6  = 46 – wide
@@ -697,7 +743,7 @@ const PACKS = [
     id: 'latte', name: "Sean's Latte Art", emoji: '☕',
     meta: '14 pairs · 2 layers',
     bgGradient: 'linear-gradient(160deg,#150900,#0a0500)',
-    layout: LAYOUT_28,
+    get layout() { return window.innerHeight > window.innerWidth ? LAYOUT_28_P : LAYOUT_28; },
     images: Array.from({length:14},(_,i)=>`images/latte/l${String(i+1).padStart(2,'0')}.jpg`),
     mosaic: [0,3,6,9,12,1,4,7,11],
     customizable: false,
@@ -1383,47 +1429,82 @@ window.addEventListener('resize', () => {
 </script>
 
 <script>
-  // Register service worker for PWA / offline support with aggressive update checking
   if ('serviceWorker' in navigator) {
-    let refreshing = false;
-    
-    // Detect when a new service worker is waiting and reload immediately
+    let swReg = null;
+
+    function showUpdateReady() {
+      const btn = document.getElementById('btn-check-update');
+      btn.textContent = '↻ Update available — tap to reload';
+      document.getElementById('update-bar').classList.add('update-ready');
+    }
+
+    function watchInstalling(worker) {
+      worker.addEventListener('statechange', () => {
+        // 'installed' + existing controller = new SW is waiting, ready to activate
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          showUpdateReady();
+        }
+      });
+    }
+
+    // Once the new SW takes over, reload so the page gets its fresh assets
+    let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      console.log('New version detected - reloading...');
+      if (reloading) return;
+      reloading = true;
       window.location.reload();
     });
-    
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(registration => {
-          console.log('Service Worker registered');
-          
-          // Check for updates every 10 seconds
-          setInterval(() => {
-            registration.update();
-          }, 10000);
-          
-          // Check for updates immediately on page load
-          registration.update();
-          
-          // When a new service worker is found, skip waiting and activate immediately
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            console.log('New version found - preparing to update...');
-            
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New service worker is ready - tell it to take over immediately
-                newWorker.postMessage({ type: 'SKIP_WAITING' });
-              }
-            });
-          });
-        })
-        .catch(err => {
-          console.log('Service Worker registration failed:', err);
+
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        swReg = reg;
+
+        // New SW already waiting (e.g. update happened before this tab opened)
+        if (reg.waiting) {
+          showUpdateReady();
+        }
+
+        // New SW found during this session
+        reg.addEventListener('updatefound', () => {
+          if (reg.installing) watchInstalling(reg.installing);
         });
+
+        // Re-check when the tab comes back into focus (common case: user reopens app)
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update();
+        });
+      })
+      .catch(err => console.warn('SW registration failed:', err));
+
+    document.getElementById('btn-check-update').addEventListener('click', async () => {
+      const bar = document.getElementById('update-bar');
+      const btn = document.getElementById('btn-check-update');
+
+      // Update is already waiting — apply it now
+      if (bar.classList.contains('update-ready')) {
+        if (swReg && swReg.waiting) {
+          swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        } else {
+          window.location.reload();
+        }
+        return;
+      }
+
+      // Manually check for a newer version
+      if (!swReg) { window.location.reload(); return; }
+      const prev = btn.textContent;
+      btn.textContent = '↻ Checking…';
+      try {
+        await swReg.update();
+        if (swReg.waiting) {
+          showUpdateReady();
+        } else {
+          btn.textContent = '✓ You\'re up to date';
+          setTimeout(() => { btn.textContent = prev; }, 3000);
+        }
+      } catch (_) {
+        btn.textContent = prev;
+      }
     });
   }
 </script>
