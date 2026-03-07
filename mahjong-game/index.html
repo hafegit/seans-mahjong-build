@@ -1383,10 +1383,47 @@ window.addEventListener('resize', () => {
 </script>
 
 <script>
-  // Register service worker for PWA / offline support
+  // Register service worker for PWA / offline support with aggressive update checking
   if ('serviceWorker' in navigator) {
+    let refreshing = false;
+    
+    // Detect when a new service worker is waiting and reload immediately
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      console.log('New version detected - reloading...');
+      window.location.reload();
+    });
+    
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js')
+        .then(registration => {
+          console.log('Service Worker registered');
+          
+          // Check for updates every 10 seconds
+          setInterval(() => {
+            registration.update();
+          }, 10000);
+          
+          // Check for updates immediately on page load
+          registration.update();
+          
+          // When a new service worker is found, skip waiting and activate immediately
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            console.log('New version found - preparing to update...');
+            
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New service worker is ready - tell it to take over immediately
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        })
+        .catch(err => {
+          console.log('Service Worker registration failed:', err);
+        });
     });
   }
 </script>

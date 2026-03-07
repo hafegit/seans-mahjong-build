@@ -1,6 +1,6 @@
 // Service Worker — Sean's AI New Year Mahjong
 // Bump CACHE_NAME whenever you deploy changes so users get fresh assets.
-const CACHE_NAME = 'pmj-pwa-v2';
+const CACHE_NAME = 'pmj-pwa-v3';
 
 const PRECACHE = [
   './',
@@ -71,4 +71,11 @@ self.addEventListener('fetch', e => {
       }).catch(() => cached || new Response('Offline', { status: 503 }));
     })
   );
+});
+
+// Listen for SKIP_WAITING message from the page
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
