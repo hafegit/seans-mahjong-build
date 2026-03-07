@@ -596,6 +596,42 @@ const LAYOUT_20 = [ // 10 pairs – Custom
   [2,2,1],[4,2,1],[2,4,1],[4,4,1],
 ];
 
+// ─── Mega layout (dynamic) ────────────────────────────────────────────────────
+// Generates a random 46-tile layout (23 pairs) each game.
+// Randomly picks from 3 base shapes, then scatters upper-layer tiles.
+function makeMegaLayout() {
+  const shapes = [
+    { cols: 6, rows: 6, upper: 10 },  // 36 + 10 = 46 – squarish
+    { cols: 5, rows: 8, upper: 6  },  // 40 + 6  = 46 – tall
+    { cols: 8, rows: 5, upper: 6  },  // 40 + 6  = 46 – wide
+  ];
+  const shape = shapes[Math.floor(Math.random() * shapes.length)];
+
+  const positions = [];
+  const baseTiles = [];
+  for (let r = 0; r < shape.rows * 2; r += 2)
+    for (let c = 0; c < shape.cols * 2; c += 2) {
+      positions.push([c, r, 0]);
+      baseTiles.push([c, r]);
+    }
+
+  // Split upper tiles randomly between layers 1 and 2
+  const l2Max = Math.min(4, Math.floor(shape.upper / 2));
+  const l2Count = Math.floor(Math.random() * (l2Max + 1));
+  const l1Count = shape.upper - l2Count;
+
+  const l1Pool = shuffle([...baseTiles]);
+  const l1Placed = l1Pool.slice(0, l1Count);
+  l1Placed.forEach(([c, r]) => positions.push([c, r, 1]));
+
+  if (l2Count > 0) {
+    const l2Pool = shuffle([...l1Placed]);
+    l2Pool.slice(0, l2Count).forEach(([c, r]) => positions.push([c, r, 2]));
+  }
+
+  return positions;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TILE_W   = 90;
 const TILE_H   = 120;
@@ -674,6 +710,18 @@ const PACKS = [
     get images() { return customImages; },
     mosaic: [0,1,2,3,4,5,6,7,8],
     customizable: true,
+  },
+  {
+    id: 'mega', name: 'Mega Board', emoji: '🌟',
+    meta: '23 pairs · random layout',
+    bgGradient: 'linear-gradient(160deg,#0e0710,#05020a)',
+    get layout() { return makeMegaLayout(); },
+    images: [
+      ...Array.from({length:14},(_,i)=>`images/latte/l${String(i+1).padStart(2,'0')}.jpg`),
+      ...Array.from({length:9}, (_,i)=>`images/pets/p0${i+1}.jpg`),
+    ],
+    mosaic: [0,14,3,17,7,15,1,18,6],
+    customizable: false,
   },
 ];
 
@@ -904,22 +952,66 @@ function shuffle(arr) {
   return a;
 }
 
+// Build a guaranteed-solvable board by working backwards:
+// repeatedly pick two currently-free tiles and assign them a matching type.
+// This records a valid solution path, so at least one always exists.
+function generateSolvableLayout() {
+  const layout = currentPack.layout;
+  const n = currentPack.images.length;
+
+  const tileset = layout.map(([col,row,layer],i)=>({
+    id:i, col, row, layer, type:-1, removed:false, el:null
+  }));
+
+  const removedIds = new Set();
+
+  function simFree(t) {
+    const live = tileset.filter(x => !removedIds.has(x.id) && x !== t);
+    if (live.some(x => x.layer === t.layer+1 && overlaps(x,t))) return false;
+    const rowOver = (a,b) => !(a.row+2<=b.row || b.row+2<=a.row);
+    const bL = live.some(x => x.layer===t.layer && x.col+2===t.col && rowOver(x,t));
+    const bR = live.some(x => x.layer===t.layer && t.col+2===x.col && rowOver(x,t));
+    return !bL || !bR;
+  }
+
+  // Each image type gets assigned to exactly one pair, in a random order
+  const types = shuffle([...Array(n).keys()]);
+
+  for (let step = 0; step < n; step++) {
+    const free = tileset.filter(t => !removedIds.has(t.id) && simFree(t));
+    if (free.length < 2) return null; // stuck — caller retries
+
+    const pick = shuffle(free);
+    const a = pick[0], b = pick[1];
+    a.type = types[step];
+    b.type = types[step];
+    removedIds.add(a.id);
+    removedIds.add(b.id);
+  }
+
+  return tileset;
+}
+
 function newGame() {
   hideOverlay();
   selected = null; hintIds = []; moveCount = 0;
   document.getElementById('stat-moves').textContent = '0';
   startTimer();
 
-  const n = currentPack.images.length;
-  let tries = 0;
-  do {
+  let result = null;
+  for (let tries = 0; tries < 200 && !result; tries++) {
+    result = generateSolvableLayout();
+  }
+  if (!result) {
+    // Fallback for pathological layouts (should never happen in practice)
+    const n = currentPack.images.length;
     const pool = shuffle([...Array(n).keys(), ...Array(n).keys()]);
-    tiles = currentPack.layout.map(([col,row,layer],i)=>({
+    result = currentPack.layout.map(([col,row,layer],i)=>({
       id:i, col, row, layer, type:pool[i], removed:false, el:null
     }));
-    tries++;
-  } while (!hasValidMoves() && tries < 500);
+  }
 
+  tiles = result;
   renderBoard();
 }
 
@@ -1093,6 +1185,15 @@ function handleWin(packId, secs, isNewBest, prev) {
   lbBtn.addEventListener('click', () => { hideOverlay(); showLeaderboardPanel(packId); });
   row.appendChild(lbBtn);
   extras.appendChild(row);
+
+  const menuRow = document.createElement('div');
+  menuRow.className = 'ov-btn-row';
+  const menuBtn = document.createElement('button');
+  menuBtn.className = 'ov-btn-ghost';
+  menuBtn.textContent = '🏠 Main Menu';
+  menuBtn.addEventListener('click', () => { hideOverlay(); showHome(); });
+  menuRow.appendChild(menuBtn);
+  extras.appendChild(menuRow);
 }
 
 // ─── Edit panel (custom pack) ─────────────────────────────────────────────────
